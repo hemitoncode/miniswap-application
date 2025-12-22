@@ -1,5 +1,8 @@
 import requests
+import certifi
 import time
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 '''
 LINKS ANNOTATION:
@@ -35,22 +38,86 @@ HEADERS = {
     'Connection': 'keep-alive',
 }
 
+'''
+SESSION OBJECT ANNOTATION:
+
+Using a persistent requests.Session object for connection pooling and reuse.
+
+BENEFITS OF SESSION OBJECT:
+----------------------------
+1. CONNECTION POOLING: Reuses TCP connections across multiple requests
+   - SSL handshake happens once per connection instead of every request
+   - Significantly faster for multiple requests to the same host
+   - Reduces intermittent SSL errors by minimizing handshake frequency
+
+2. PERSISTENT HEADERS: Headers are set once on the session, not per request
+   - Cleaner code, less repetition
+   - Consistent headers across all requests
+
+3. CERTIFICATE MANAGEMENT: Using certifi.where() for up-to-date CA bundle
+   - certifi provides Mozilla's carefully curated CA certificate bundle
+   - Automatically includes intermediate certificates
+   - More reliable than system certificates which may be outdated
+
+4. HTTP CONNECTION REUSE: Keep-alive connections maintained automatically
+   - Multiple requests over same TCP connection
+   - Lower latency for subsequent requests
+   - More efficient network usage
+
+5. CONNECTION POOL SETTINGS: Configured to handle stale connections
+   - max_retries=3: Automatically retry failed connections
+   - pool_connections: Number of connection pools to cache
+   - pool_maxsize: Maximum connections to save in the pool
+
+WHY THIS HELPS WITH SSL AND TIMEOUT ISSUES:
+--------------------------------------------
+- Fewer SSL handshakes = fewer opportunities for SSL failures
+- Up-to-date CA bundle = better certificate validation
+- Connection reuse = more stable connection to the same server
+- Automatic retries handle transient network issues
+- Reduces impact of load balancer server inconsistencies
+'''
+
+# Configure retry strategy for the session
+retry_strategy = Retry(
+    total=3,                    # Total number of retries
+    backoff_factor=1,           # Wait 1, 2, 4 seconds between retries
+    status_forcelist=[429, 500, 502, 503, 504],  # Retry on these HTTP status codes
+    allowed_methods=["GET"]     # Only retry GET requests
+)
+
+# Create HTTP adapter with retry strategy
+adapter = HTTPAdapter(
+    max_retries=retry_strategy,
+    pool_connections=10,        # Number of connection pools to cache
+    pool_maxsize=20            # Max connections to save in pool
+)
+
+# Create persistent session object for all requests
+session = requests.Session()
+session.mount("https://", adapter)  # Apply adapter to HTTPS requests
+session.mount("http://", adapter)   # Apply adapter to HTTP requests
+session.headers.update(HEADERS)
+session.verify = certifi.where()    # Use certifi's up-to-date CA certificate bundle
+
 
 '''
 HELPER FUNCTIONS ANNOTATION:
 
 - Helper functions to fetch web pages
 - fetchListings: Fetches HTML content of kit listings pages, iterating through multiple pages
-  starting from START_PAGE and continuing for MAX_PAGES iterations.
+  starting from START_PAGE and continuing through END_PAGE.
 - fetchKitDetails: Fetches detailed HTML content for a specific kit based on sku link which is 
   retrieved from parsing HTML of the kit listing page.
   
-Both functions use a TWO-TIER RETRY STRATEGY to handle SSL certificate errors:
-  TIER 1: Always attempt HTTPS request with SSL verification enabled (secure & proper)
-  TIER 2: If SSL fails, retry WITHOUT verification (fallback for certificate issues)
+Both functions use the persistent SESSION OBJECT for connection pooling:
+  - Reuses TCP connections across multiple requests
+  - Performs SSL handshake once per connection instead of per request
+  - Uses certifi's up-to-date CA certificate bundle for better SSL validation
+  - Maintains keep-alive connections automatically
   
-This approach prioritizes security but ensures scraping continues even if miniset.net
-has SSL certificate problems.
+This approach reduces intermittent SSL errors by minimizing the number of SSL handshakes
+and ensures we're using the most current certificate validation.
 '''
 
 
@@ -62,26 +129,24 @@ def fetchListings():
     Starts at START_PAGE and fetches through END_PAGE.
     Yields HTML content for each successfully fetched page.
     
-    RETRY LOGIC EXPLANATION:
-    --------------------------------------------------
-    The function uses a try-except structure with TWO attempts per page:
+    CONNECTION STRATEGY:
+    --------------------
+    Uses the persistent session object which:
+    - Reuses the same TCP connection across multiple page requests
+    - Performs SSL handshake only when establishing new connections
+    - Automatically handles keep-alive and connection pooling
+    - Uses certifi's CA bundle for reliable certificate validation
+    - Automatically retries failed requests (3 attempts with backoff)
     
-    ATTEMPT 1 (Secure Method):
-        - Makes HTTPS request WITH SSL certificate verification
-        - This is the PROPER way to make requests (secure & encrypted)
-        - Will succeed if the website has valid SSL certificates
-        
-    ATTEMPT 2 (Fallback Method):
-        - Only runs if ATTEMPT 1 throws an SSLError
-        - Makes HTTPS request WITHOUT SSL certificate verification (verify=False)
-        - This bypasses certificate validation completely
-        - Less secure, but allows data collection to continue
-        
-    WHY THIS APPROACH?
-        - Some websites have expired/misconfigured SSL certificates
-        - Rather than failing completely, we attempt the insecure method as backup
-        - The ⚠ warning symbol alerts us when the fallback is used
-        - We can investigate SSL issues later without blocking our scraping work
+    TIMEOUT HANDLING:
+    -----------------
+    - Connect timeout: 10 seconds (time to establish connection)
+    - Read timeout: 30 seconds (time to receive response after connection)
+    - Longer read timeout handles slow server responses
+    - Separate timeouts allow distinguishing connection vs server issues
+    
+    This significantly reduces the chance of intermittent SSL errors since
+    we're not renegotiating SSL for every single page request.
     """
     for currentPage in range(START_PAGE, END_PAGE + 1):
         print(f"Fetching listings page: {currentPage}")
@@ -91,31 +156,18 @@ def fetchListings():
         time.sleep(0.5)
         
         try:
-            # ATTEMPT 1: Secure method with SSL verification
-            response = requests.get(kitListingsLink, headers=HEADERS, timeout=15)
+            # Use session object with separate connect and read timeouts
+            # Format: timeout=(connect_timeout, read_timeout)
+            response = session.get(kitListingsLink, timeout=(10, 30))
             if response.status_code == 200:
                 yield response.text
             else:
                 print(f"  ✗ Failed to retrieve page {currentPage} - Status code: {response.status_code}")
                 yield None
-                
-        except requests.exceptions.SSLError as ssl_error:
-            # ATTEMPT 2: Fallback without SSL verification
-            # Triggered when: SSL certificate is invalid, expired, or can't be verified
-            print(f"  ⚠ SSL error on page {currentPage}, retrying without verification...")
-            try:
-                response = requests.get(kitListingsLink, headers=HEADERS, timeout=15, verify=False)
-                if response.status_code == 200:
-                    yield response.text
-                else:
-                    print(f"  ✗ Failed even without SSL verification - Status code: {response.status_code}")
-                    yield None
-            except requests.RequestException as e:
-                print(f"  ✗ Error on retry: {e}")
-                yield None
-                
+        except requests.exceptions.Timeout:
+            print(f"  ✗ Timeout error on page {currentPage} - server took too long to respond")
+            yield None
         except requests.RequestException as e:
-            # Catches other network errors (timeout, connection refused, DNS failure, etc.)
             print(f"  ✗ Error fetching page {currentPage}: {e}")
             yield None
 
@@ -132,29 +184,24 @@ def fetchKitDetails(sku):
     Returns:
         HTML content as string if successful, None otherwise
         
-    RETRY LOGIC EXPLANATION:
-    --------------------------------------------------
-    Uses the SAME two-tier retry strategy as fetchListings():
+    CONNECTION STRATEGY:
+    --------------------
+    Uses the persistent session object which:
+    - Reuses TCP connections from the connection pool
+    - Minimizes SSL handshakes by maintaining persistent connections
+    - Provides more stable connections to miniset.net servers
+    - Uses certifi's CA bundle for up-to-date certificate validation
+    - Automatically retries failed requests (3 attempts with backoff)
     
-    ATTEMPT 1 (Secure):
-        - HTTPS with SSL verification (verify=True by default)
-        - Ensures encrypted connection with verified certificate
-        
-    ATTEMPT 2 (Fallback):
-        - Only runs if SSLError is caught from ATTEMPT 1
-        - HTTPS WITHOUT SSL verification (verify=False)
-        - Also disables SSL warnings to keep console output clean
-        
-    WHEN ATTEMPT 2 RUNS:
-        - SSL certificate can't be verified (expired, self-signed, wrong domain, etc.)
-        - Connection still encrypted, but we can't verify server identity
-        - Print statement shows "(without SSL verification)" so we know it happened
-        
-    WHY DISABLE WARNINGS?
-        - When verify=False is used, urllib3 spams warnings to console
-        - We already print our own warning message (⚠ symbol)
-        - Disabling prevents duplicate/redundant warning spam
-        - Makes output cleaner and easier to read
+    TIMEOUT HANDLING:
+    -----------------
+    - Connect timeout: 10 seconds (time to establish connection)
+    - Read timeout: 30 seconds (time to receive response after connection)
+    - Longer read timeout handles slow server responses
+    - Separate timeouts allow distinguishing connection vs server issues
+    
+    Since we're making many sequential requests for kit details, connection
+    reuse provides significant performance benefits and stability improvements.
     """
     kitLink = f"https://miniset.net/sets/gw-{sku}"
     
@@ -162,37 +209,18 @@ def fetchKitDetails(sku):
     time.sleep(0.3)
     
     try:
-        # ATTEMPT 1: Secure method with SSL verification
-        response = requests.get(kitLink, headers=HEADERS, timeout=15)
+        # Use session object with separate connect and read timeouts
+        # Format: timeout=(connect_timeout, read_timeout)
+        response = session.get(kitLink, timeout=(10, 30))
         if response.status_code == 200:
             print(f"  ✓ Fetched details for {sku}")
             return response.text
         else:
             print(f"  ✗ Failed to retrieve {sku} - Status code: {response.status_code}")
             return None
-            
-    except requests.exceptions.SSLError as ssl_error:
-        # ATTEMPT 2: Fallback without SSL verification
-        # This catches the specific error encountered: "no certificate or crl found"
-        print(f"  ⚠ SSL error for {sku}, retrying without verification...")
-        try:
-            # Disable SSL warnings since we're intentionally using verify=False
-            # This prevents urllib3 from spamming "InsecureRequestWarning" to console
-            import urllib3
-            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-            
-            response = requests.get(kitLink, headers=HEADERS, timeout=15, verify=False)
-            if response.status_code == 200:
-                print(f"  ✓ Fetched details for {sku} (without SSL verification)")
-                return response.text
-            else:
-                print(f"  ✗ Failed even without SSL verification - Status code: {response.status_code}")
-                return None
-        except requests.RequestException as e:
-            print(f"  ✗ Error on retry for {sku}: {e}")
-            return None
-            
+    except requests.exceptions.Timeout:
+        print(f"  ✗ Timeout error for {sku} - server took too long to respond")
+        return None
     except requests.RequestException as e:
-        # Catches other network errors (not SSL-related)
         print(f"  ✗ Error fetching kit details for {sku}: {e}")
         return None
