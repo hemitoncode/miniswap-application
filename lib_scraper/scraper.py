@@ -44,8 +44,8 @@ def parseListings(html):
 
         if (year == '2025'):
             continue  # Skip kits from the year 2025
-        elif (year == '2023'):
-            break     # Stop processing further as we only want 2024 kits
+
+        # No need to check for 2023 or earlier since no pages contain those years based on manual analysis
 
         # We extract the link to the detailed page. Since it is the only link in this TD, we can directly find it.
         detailedPageLink = td2.find("a").get('href', '').strip()

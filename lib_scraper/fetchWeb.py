@@ -26,9 +26,9 @@ All 2024 kits can be found on this page. Each path segment serves as a specific 
 BASE_KIT_LISTING = 'https://miniset.net/sets/games-workshop/sort-new/type-miniature/kind-not3d/show-40/page-'
 
 # These are the ranges of page which contain 2024 kits
-# This way we do not have to scrape all pages for this catalog
-START_PAGE = 35
-END_PAGE = 74
+# This way we do not have to scrape all pages for this catalog to find 2024 kits
+START_PAGE = 13
+END_PAGE = 26
 
 # HTTP headers to make requests appear browser-like (helps avoid blocks and SSL issues)
 HEADERS = {
