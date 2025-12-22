@@ -1,6 +1,6 @@
-from lib.fetchWeb import fetchListings, fetchKitDetails
-from lib.scraper import parseListings, parseKitDetails
-from lib.manageJSON import append_to_json
+from lib_scraper.fetchWeb import fetchListings, fetchKitDetails
+from lib_scraper.scraper import parseListings, parseKitDetails
+from lib_scraper.manageJSON import append_to_json
 
 '''
 MODULAR CODE ANNOTATION:
