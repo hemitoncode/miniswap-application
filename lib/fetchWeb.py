@@ -18,17 +18,17 @@ All 2024 kits can be found on this page. Each path segment serves as a specific 
 - The /view-details gives us detailed list instead of gallery view which gives release date without
   having to request each individual kit page. This way, we do not have to make extra requests to the
   detailed page to get the release date for filtering purposes.
-- /show-20 shows 20 kits per page to reduce the number of pages we have to iterate through.
-- /page- is the pagination segment to get different pages of listings. I will be iterating through 
+- /show-40 shows 40 kits per page to reduce the number of pages we have to iterate through (more kits to parse through per each page)
+- /page-{will add number here} is the pagination segment to get different pages of listings. I will be iterating through 
   multiple pages starting from page 25 to get all 2024 kits.
 '''
 
-BASE_KIT_LISTING = 'https://miniset.net/sets/games-workshop/sort-new/type-miniature/kind-not3d/view-details/show-20/page-'
+BASE_KIT_LISTING = 'https://miniset.net/sets/games-workshop/sort-new/type-miniature/kind-not3d/show-40/page-'
 
 # These are the ranges of page which contain 2024 kits
 # This way we do not have to scrape all pages for this catalog
-START_PAGE = 25
-END_PAGE = 52
+START_PAGE = 35
+END_PAGE = 74
 
 # HTTP headers to make requests appear browser-like (helps avoid blocks and SSL issues)
 HEADERS = {

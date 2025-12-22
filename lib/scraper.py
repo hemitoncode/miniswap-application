@@ -1,4 +1,3 @@
-# Beautifulsoup is used to parse HTML content and extract data from web pages.
 from bs4 import BeautifulSoup
 from .sanitizer import sanitizeYear, sanitizeSKU
 
@@ -45,6 +44,8 @@ def parseListings(html):
 
         if (year == '2025'):
             continue  # Skip kits from the year 2025
+        elif (year == '2023'):
+            break     # Stop processing further as we only want 2024 kits
 
         # We extract the link to the detailed page. Since it is the only link in this TD, we can directly find it.
         detailedPageLink = td2.find("a").get('href', '').strip()
