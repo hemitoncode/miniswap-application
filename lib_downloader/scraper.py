@@ -3,7 +3,7 @@ import time
 from urllib.parse import quote
 from bs4 import BeautifulSoup
 from .normalizer import normalizeName
-from config import *
+from .config import *
 import certifi
 
 def searchBuildInstructions(kitName):
