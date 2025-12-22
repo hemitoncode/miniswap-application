@@ -1,8 +1,8 @@
-from config import *
 from bs4 import BeautifulSoup
 import requests
 import time
 import certifi
+from .config import HEADERS, MAX_RETRIES, DELAY_BETWEEN_REQUESTS
 
 def getPdfLink(pageUrl):
     """
