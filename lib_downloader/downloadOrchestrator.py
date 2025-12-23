@@ -1,4 +1,3 @@
-
 from .normalizer import normalizeName
 from .managePDF import getPdfLink, downloadPdf
 from .scraper import searchBuildInstructions
