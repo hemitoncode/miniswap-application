@@ -7,11 +7,10 @@ def parseListings(html):
 
     soup = BeautifulSoup(html, 'html.parser')
 
-    # Find table containing kit listings
-    table = soup.find('table', {'class': 'views-table'})
-    
+    # Table body contains all the kit listings and there is only one per page 
+    table = soup.find('tbody')
     if not table:
-        print("⚠️  WARNING: No table with class 'views-table' found on this page")
+        print("No kit listings table found in the HTML.")
         return kitsToScrape
 
     # There is no header row in the table, so no need to splice index from pos 1 onwards

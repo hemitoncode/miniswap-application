@@ -23,7 +23,7 @@ if __name__ == "__main__":
     print("Starting to scrape kit listings...\n")
     
     # Fetch kit listings pages (generator yields multiple pages)
-    for html in list(fetchListings()):
+    for html in fetchListings():
         # Skip if page fetch failed
         if html is None:
             print("⚠️  Skipping to next page due to fetch failure...\n")
